@@ -3,14 +3,33 @@ const router = express.Router();
 const BoothEntry = require("../models/BoothEntry");
 const User = require("../models/User"); // adjust path if needed
 const requireAuth = require("../middleware/requireAuth");
+const UserProfile = require("../models/UserProfile");
 
-// CREATE (POST) - /api/booth-entries
 router.post("/new-entry", async (req, res) => {
   try {
+    // get email (prefer token email if you have auth; else from body)
+    const email = (req.body.email || "").toLowerCase().trim();
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // fetch user's pc
+    const user = await UserProfile.findOne({ email }).select("pc").lean();
+    if (!user?.pc) {
+      return res
+        .status(404)
+        .json({ message: "UserProfile/PC not found for this email" });
+    }
+
+    // force pc from profile (ignore frontend pc)
+    req.body.pc = user.pc;
+
     const doc = await BoothEntry.create(req.body);
     return res.status(201).json({ message: "Created", data: doc });
   } catch (err) {
-    return res.status(400).json({ message: "Create failed", error: err.message });
+    return res
+      .status(400)
+      .json({ message: "Create failed", error: err.message });
   }
 });
 
@@ -18,11 +37,16 @@ router.post("/new-entry", async (req, res) => {
 function extractWardRoles(roles = []) {
   const wards = new Set();
   for (const r of roles) {
-    const raw = String(r || "").trim().toLowerCase();
+    const raw = String(r || "")
+      .trim()
+      .toLowerCase();
     if (!raw || raw === "admin") continue;
 
     // accepts: "Ward 184", "184", "w184"
-    let w = raw.replace(/^ward\s*/i, "").replace(/^w\s*/i, "").trim();
+    let w = raw
+      .replace(/^ward\s*/i, "")
+      .replace(/^w\s*/i, "")
+      .trim();
     if (w) wards.add(w);
   }
   return [...wards];
@@ -44,15 +68,20 @@ router.get("/all", requireAuth, async (req, res) => {
       if (req.query.ward) q.ward = String(req.query.ward).trim();
     } else {
       const allowed = extractWardRoles(roles); // e.g. ["184","227"]
-      if (!allowed.length) return res.status(403).json({ message: "No ward access in roles" });
+      if (!allowed.length)
+        return res.status(403).json({ message: "No ward access in roles" });
 
       // allow exact stored forms (recommended: store ward as "184" consistently)
       q.ward = { $in: allowed.map(String) };
 
       // if user tries ?ward=xxx, enforce allowed
       if (req.query.ward) {
-        const asked = String(req.query.ward).trim().toLowerCase().replace(/^ward\s*/i, "");
-        if (!allowed.includes(asked)) return res.status(403).json({ message: "Ward not allowed" });
+        const asked = String(req.query.ward)
+          .trim()
+          .toLowerCase()
+          .replace(/^ward\s*/i, "");
+        if (!allowed.includes(asked))
+          return res.status(403).json({ message: "Ward not allowed" });
         q.ward = asked;
       }
     }
@@ -60,7 +89,9 @@ router.get("/all", requireAuth, async (req, res) => {
     const docs = await BoothEntry.find(q).sort({ createdAt: -1 });
     return res.status(200).json({ data: docs });
   } catch (err) {
-    return res.status(500).json({ message: "Fetch failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Fetch failed", error: err.message });
   }
 });
 
@@ -85,10 +116,11 @@ router.get("/all-admin", requireAuth, async (req, res) => {
     const docs = await BoothEntry.find(q).sort({ createdAt: -1 });
     return res.status(200).json({ data: docs });
   } catch (err) {
-    return res.status(500).json({ message: "Fetch failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Fetch failed", error: err.message });
   }
 });
-
 
 // UPDATE STATUS (PATCH) - /api/booth-entries/:id/status
 router.patch("/:id/status", async (req, res) => {
@@ -109,10 +141,11 @@ router.patch("/:id/status", async (req, res) => {
 
     return res.status(200).json({ message: "Status updated", data: doc });
   } catch (err) {
-    return res.status(400).json({ message: "Update failed", error: err.message });
+    return res
+      .status(400)
+      .json({ message: "Update failed", error: err.message });
   }
 });
-
 
 // READ ONE (GET) - /api/booth-entries/:id
 router.get("/:id", async (req, res) => {
@@ -129,7 +162,8 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     // normalize email if present
-    if (req.body.email) req.body.email = String(req.body.email).trim().toLowerCase();
+    if (req.body.email)
+      req.body.email = String(req.body.email).trim().toLowerCase();
 
     const doc = await BoothEntry.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -139,7 +173,9 @@ router.put("/:id", async (req, res) => {
     if (!doc) return res.status(404).json({ message: "Not found" });
     return res.status(200).json({ message: "Updated", data: doc });
   } catch (err) {
-    return res.status(400).json({ message: "Update failed", error: err.message });
+    return res
+      .status(400)
+      .json({ message: "Update failed", error: err.message });
   }
 });
 
@@ -150,7 +186,9 @@ router.delete("/:id", async (req, res) => {
     if (!doc) return res.status(404).json({ message: "Not found" });
     return res.status(200).json({ message: "Deleted", data: doc });
   } catch (err) {
-    return res.status(400).json({ message: "Delete failed", error: err.message });
+    return res
+      .status(400)
+      .json({ message: "Delete failed", error: err.message });
   }
 });
 
